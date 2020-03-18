@@ -1,0 +1,199 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+    <title>账号过滤</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+</head>
+<body>
+<div id="app"
+     v-loading.fullscreen.lock="loading">
+    <div style="display: flex;">
+        <el-table border
+                  stripe
+                  :data="allPost"
+                  height="calc(100vh - 30px)"
+                  :default-sort = "{prop: 'content.post_no', order: 'descending'}"
+                  :row-style="filterKeys"
+                  style="margin: 15px;">
+        <el-table-column type="expand">
+            <template slot-scope="scope">
+               <p v-html="scope.row.content.content"></p>
+            </template>
+        </el-table-column>
+        <el-table-column width="150"
+                         label="楼层"
+                         sortable
+                         prop="content.post_no">
+        </el-table-column>
+        <el-table-column width="300"
+                         label="用户"
+                         prop="author.user_nickname">
+        </el-table-column>
+        <el-table-column label="描述">
+            <template slot-scope="scope">
+                <p v-html="scope.row.content.content.substr(0,100)"></p>
+            </template>
+        </el-table-column>
+    </el-table>
+    </div>
+    <div style="background-color: #ebeef5;position: absolute;display: inline-block;width: 400px;border-radius: 10px;z-index: 1;"
+         @mouseover="dragVisible = true"
+         @mouseout="dragVisible = false"
+         v-bind:style="{top: top + 'px',left: left + 'px'}">
+        <i v-show="dragVisible" class="el-icon-s-grid"
+           style="position: absolute; top: 0;left: 192px;cursor: move"
+           @mousedown="addComputePosition"
+           @mouseup="cancelCompute"></i>
+        <div style="margin: 15px;">
+            <el-tag style="margin: 0 5px 5px 0"
+                    :key="key"
+                    v-for="key in keys"
+                    type="success"
+                    closable
+                    :disable-transitions="false"
+                    @close="handleClose(key)">
+                {{key}}
+            </el-tag>
+            <div style="margin-bottom: 5px;">
+                 <el-input
+                    class="input-new-tag"
+                    v-if="inputVisible"
+                    v-model="inputValue"
+                    ref="saveTagInput"
+                    size="small"
+                    @keyup.enter.native="handleInputConfirm"
+                    @blur="handleInputConfirm">
+                </el-input>
+                <el-button type="primary" v-else class="button-new-tag" size="small" @click="showInput">+ New Tag</el-button>
+            </div>
+            <div style="display: flex;justify-content: center;align-items: center;">
+                <el-button type="primary" @click="filter">拉取信息</el-button>
+                &nbsp&nbsp共{{allPageNumber}}页&nbsp&nbsp
+                <el-button type="primary" @click="getAllPageNumber">初始化</el-button>
+            </div>
+            <div style="display: flex;justify-content: center;align-items: center;margin-top: 5px;">
+                <el-button v-if="!useProx" type="primary" @click="useProx=!useProx">开启代理</el-button>
+                <el-button v-else type="warning"  @click="useProx=!useProx">关闭代理</el-button>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<!--<script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>-->
+<script src="https://unpkg.com/vue/dist/vue.js"></script>
+<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<!--<script type="text/javascript" src="http://libs.baidu.com/jquery/1.7.2/jquery.min.js"></script>-->
+<script>
+    var app = new Vue({
+        el: '#app',
+        data: {
+            allPageNumber: 1,
+            currentPage: 0,
+            keys: [],
+            allPost: [],
+            inputVisible: false,
+            inputValue: '',
+            dragVisible: false,
+            top: 600,
+            left: 600,
+            useProx: false,
+            http: (window.location.protocol === 'http:' ? 'http:' : 'https:'),
+            loading: false,
+        },
+        mounted () {
+            // $.ajaxPrefilter(function (options) {
+            //     if (options.crossDomain && jQuery.support.cors) {
+            //         var http = (window.location.protocol === 'http:' ? 'http:' : 'https:');
+            //         options.url = http + '//cors-anywhere.herokuapp.com/' + options.url;
+            //         //options.url = "http://cors.corsproxy.io/url=" + options.url;
+            //     }
+            // })
+            axios.interceptors.request.use(config => {
+                if (this.useProx) {
+                    config.url = this.http + '//cors-anywhere.herokuapp.com/' + config.url;
+                }
+                return config
+            })
+            this.getAllPageNumber()
+        },
+        methods: {
+            getAllPageNumber () {
+                this.loading = true
+                axios.get('https://tieba.baidu.com/p/6555009485').then((res) => {
+                    let div = document.createElement('div')
+                    div.innerHTML = res.data
+                    this.allPageNumber = parseInt(div.querySelector('.l_reply_num').innerText.split('，')[1].replace(/[^0-9]/ig,''))
+                    this.currentPage = this.allPageNumber
+                }).finally(() => {
+                    this.loading = false
+                })
+            },
+            async filter () {
+                var timer = 0
+                while(this.currentPage >= 0 && timer !== 2) {
+                    var div = document.createElement('div')
+                    this.loading = true
+                    await axios.get('https://tieba.baidu.com/p/6555009485?pn=' + this.currentPage).then((res) => {
+                        this.currentPage--
+                        timer++
+                        div.innerHTML = res.data
+                        let allCurrentPagePost = div.getElementsByClassName('l_post l_post_bright j_l_post clearfix')
+                        for (let i = 0; i < allCurrentPagePost.length; i++) {
+                            this.allPost = this.allPost.concat(JSON.parse(allCurrentPagePost[i].dataset.field))
+                        }
+                    }).catch(() => {
+                        return
+                    }).finally(() => {
+                        this.loading = false
+                    })
+                }
+            },
+            handleClose(key) {
+                this.keys.splice(this.keys.indexOf(key), 1);
+            },
+            showInput() {
+                this.inputVisible = true;
+                this.$nextTick(_ => {
+                    this.$refs.saveTagInput.$refs.input.focus();
+                });
+            },
+            handleInputConfirm() {
+                let inputValue = this.inputValue;
+                if (inputValue) {
+                    this.keys.push(inputValue);
+                }
+                this.inputVisible = false;
+                this.inputValue = '';
+            },
+            addComputePosition (e) {
+                document.addEventListener('mousemove', this.computePosition)
+            },
+            cancelCompute (e) {
+                document.removeEventListener('mousemove', this.computePosition)
+            },
+            computePosition (e) {
+                this.top = e.clientY - 8
+                this.left = e.clientX - 200
+                console.log(document.body.scrollTop)
+            },
+            filterKeys ({row, rowIndex}) {
+                console.log('filterKeys')
+                return {
+                    display: this.keys.length === 0 ? '' : this.keys.every((item) => { return row.content.content.indexOf(item) !== -1 }) ?  '' : 'none'
+                }
+            }
+        }
+    })
+</script>
+<style>
+    html{
+        background-color: #c0c4cc91;
+    }
+    body{
+        margin: 0;
+        overflow: hidden;
+    }
+</style>
+</html>
