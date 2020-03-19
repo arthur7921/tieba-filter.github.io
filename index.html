@@ -141,6 +141,7 @@
         },
         methods: {
             getAllPageNumber () {
+                this.allPost = []
                 this.loading = true
                 axios.get(this.url).then((res) => {
                     this.$message.success('初始化成功')
