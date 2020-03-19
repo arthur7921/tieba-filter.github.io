@@ -1,7 +1,7 @@
 <!DOCTYPE HTML>
 <html lang="en">
 <head>
-    <title>账号过滤</title>
+    <title>回复过滤</title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
 </head>
@@ -67,8 +67,13 @@
                 </el-input>
                 <el-button type="primary" v-else class="button-new-tag" size="small" @click="showInput">+ New Tag</el-button>
             </div>
+            <el-input placeholder="请输入帖子链接"
+                      style="margin: 5px 0 5px 0"
+                      v-model="url"
+                      clearable>
+            </el-input>
             <div style="display: flex;justify-content: center;align-items: center;">
-                <el-button type="primary" @click="filter">拉取信息</el-button>
+                <el-button type="primary" @click="filter" :disabled="currentPage === 0">拉取信息</el-button>
                 &nbsp&nbsp共{{allPageNumber}}页&nbsp&nbsp
                 <el-button type="primary" @click="getAllPageNumber">初始化</el-button>
             </div>
@@ -89,18 +94,19 @@
     var app = new Vue({
         el: '#app',
         data: {
-            allPageNumber: 1,
+            allPageNumber: 0,
             currentPage: 0,
             keys: [],
             allPost: [],
             inputVisible: false,
             inputValue: '',
             dragVisible: false,
-            top: 600,
-            left: 600,
+            top: window.innerHeight - 210,
+            left: (window.innerWidth / 2) - 200,
             useProx: false,
             http: (window.location.protocol === 'http:' ? 'http:' : 'https:'),
             loading: false,
+            url: ''
         },
         mounted () {
             // $.ajaxPrefilter(function (options) {
@@ -110,32 +116,50 @@
             //         //options.url = "http://cors.corsproxy.io/url=" + options.url;
             //     }
             // })
+
+            this.$prompt('请输入链接', '引导', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                inputPattern: /^https:\/\/tieba.baidu.com\/p\/[0-9]+$/,
+                inputErrorMessage: '链接不正确',
+                closeOnClickModal: false
+            }).then(({ value }) => {
+                this.url = value
+                this.getAllPageNumber()
+            }).catch(() => {
+                this.$message({
+                    type: 'info',
+                    message: '取消输入'
+                })
+            })
             axios.interceptors.request.use(config => {
                 if (this.useProx) {
                     config.url = this.http + '//cors-anywhere.herokuapp.com/' + config.url;
                 }
                 return config
             })
-            this.getAllPageNumber()
         },
         methods: {
             getAllPageNumber () {
                 this.loading = true
-                axios.get('https://tieba.baidu.com/p/6555009485').then((res) => {
+                axios.get(this.url).then((res) => {
+                    this.$message.success('初始化成功')
                     let div = document.createElement('div')
                     div.innerHTML = res.data
                     this.allPageNumber = parseInt(div.querySelector('.l_reply_num').innerText.split('，')[1].replace(/[^0-9]/ig,''))
                     this.currentPage = this.allPageNumber
+                }).catch(() => {
+                    this.$message.error('网络错误')
                 }).finally(() => {
                     this.loading = false
                 })
             },
             async filter () {
                 var timer = 0
-                while(this.currentPage >= 0 && timer !== 2) {
+                while(this.currentPage > 0 && timer <= 2) {
                     var div = document.createElement('div')
                     this.loading = true
-                    await axios.get('https://tieba.baidu.com/p/6555009485?pn=' + this.currentPage).then((res) => {
+                    await axios.get(this.url + '?pn=' + this.currentPage).then((res) => {
                         this.currentPage--
                         timer++
                         div.innerHTML = res.data
@@ -144,6 +168,7 @@
                             this.allPost = this.allPost.concat(JSON.parse(allCurrentPagePost[i].dataset.field))
                         }
                     }).catch(() => {
+                        this.$message.error('网络错误,请检查链接')
                         return
                     }).finally(() => {
                         this.loading = false
